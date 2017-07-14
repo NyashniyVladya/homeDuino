@@ -182,6 +182,7 @@ class RoomController {
 };
 
 const char separator = '/';
+char inChar;
 String message = "";
 RoomController controller;
 
@@ -201,8 +202,8 @@ void loop() {
     };
     controller.setColorsToLent();
     while (Serial.available()) {
-        char *inChar = new char((Serial.read()));
-        if (*inChar == separator) {
+        inChar = Serial.read();
+        if (inChar == separator) {
             message.trim();
             message.toLowerCase();
             if (message.length() <= 0) {
@@ -211,9 +212,8 @@ void loop() {
             controller.parseMessage(&message);
             message = "";
         } else {
-            message += *inChar;
+            message += inChar;
         }
-        delete inChar;
     }
 }
 
