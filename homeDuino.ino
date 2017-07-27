@@ -51,12 +51,6 @@ class RoomController {
         int RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
         const int RGBPin[3] = {11, 10, 9};
         
-        double myRound(const double *val, int roundLevel = 1) {
-            // Окргуляет значение, до $roundLevel знаков, после запятой.
-            int exponentVal = pow(10, roundLevel);
-            return (floor((((*val) * exponentVal) + .5)) / exponentVal);
-        }
-        
         void roomLightOnOff(const int lampNum) {
             // Переключает состояние (вкл./выкл.) на лампе $lampNum.
             boolean *newLampStatus = new boolean;
@@ -110,14 +104,31 @@ class RoomController {
         
     public:
         Button roomLightButton{12};
-        double lentLightLevel() {
+        boolean numInRange(const float *num, const float start, const float stop) {
+            if ((start <= (*num)) && ((*num) < stop)) {
+                return true;
+            }
+            return false;
+        }
+        float lentLightLevel() {
             /* 
             Возвращает округлённое процентное значения аналогового регулятора,
             где (.0 <= value <= 1.)
             */
-            double percentLevel = analogRead(lightLentAnalogPin) / 1024.;
-            return myRound(&percentLevel);
+            const float percentLevel = analogRead(lightLentAnalogPin) / 1023.;
+            if (numInRange(&percentLevel, .0, .2)) {
+                return .0;
+            } else if (numInRange(&percentLevel, .2, .4)) {
+                return .2;
+            } else if (numInRange(&percentLevel, .4, .6)) {
+                return .5;
+            } else if (numInRange(&percentLevel, .6, .8)) {
+                return .8;
+            } else {
+                return 1.;
+            }
         }
+        
         void switchLampMode() {
             // Переключает значения ламп. Для управления с одной кнопки, без ПК.
             if (lampOne) {
@@ -144,15 +155,13 @@ class RoomController {
             Функция, работающая в цикле. 
             Переключает цвета, на переданные, через COM, с поправкой на регулятор.
             */
-            const double *lightPercent = new double(lentLightLevel());
+            const float *lightPercent = new float(lentLightLevel());
             int *colorNeed = new int;
             int *pinNum = new int;
             for (int i = 0; i <= 2; i++) {
                 *colorNeed = RGB[i] * (*lightPercent); // Запрашиваемый цвет, помноженный на значение регулятора.
                 *pinNum = RGBPin[i];
-                if (*colorNeed != analogRead(*pinNum)) {
-                    colorWrite(pinNum, colorNeed);
-                };
+                colorWrite(pinNum, colorNeed);
             }
             delete lightPercent;
             delete colorNeed;
