@@ -21,7 +21,7 @@ class Button {
             Была нажата, сейчас отпущена.
             */
             boolean *buttonNotPush = new boolean;
-            for (int scanStep = 1; scanStep <= 2; ++scanStep) {
+            for (int scanStep = 1; scanStep <= 2; scanStep++) {
                 *buttonNotPush = digitalRead(buttonPinNum);
                 if (*buttonNotPush) {
                     delete buttonNotPush;
@@ -50,6 +50,8 @@ class RoomController {
         boolean lampTwo = false;
         int RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
         const int RGBPin[3] = {11, 10, 9};
+        boolean ringMode = false; // Режим прозвонки на 13 пине.
+        boolean lastRingStatus;
         
         void roomLightOnOff(const int lampNum) {
             // Переключает состояние (вкл./выкл.) на лампе $lampNum.
@@ -91,7 +93,7 @@ class RoomController {
         }
         
         void colorWrite(const int *pinNum, const int *colorVal) {
-            // Ставит нужное напрядение на контакте $pinNum. Обёртка над analogWrite().
+            // Ставит нужное напряжение на контакте $pinNum. Обёртка над analogWrite().
             int *value = new int(*colorVal);
             if (*value < 0) {
                 *value = 0;
@@ -105,10 +107,7 @@ class RoomController {
     public:
         Button roomLightButton{12};
         boolean numInRange(const float *num, const float start, const float stop) {
-            if ((start <= (*num)) && ((*num) < stop)) {
-                return true;
-            }
-            return false;
+            return ((start <= (*num)) && ((*num) < stop));
         }
         float lentLightLevel() {
             /* 
@@ -186,8 +185,27 @@ class RoomController {
                 }
                 lentWriteColorToArray(colorAndVal);
                 delete colorAndVal;
+            } else if ((*inputMessage).startsWith("ring")) {
+                // Включить/Выключить прозвонку на 13 пине.
+                ringMode = !(ringMode);
+                lastRingStatus = false;
+                Serial.print("ringmode: ");
+                Serial.println(ringMode);
             }
         }
+        
+        void ringCycleFunc() {
+            if (ringMode) {
+                boolean *contactNow = new boolean((!(digitalRead(13))));
+                if ((*contactNow) != lastRingStatus) {
+                    lastRingStatus = (*contactNow);
+                    Serial.print("ring: ");
+                    Serial.println(*contactNow);
+                };
+                delete contactNow;
+            };
+        }
+        
 };
 
 const char separator = '/';
@@ -198,8 +216,9 @@ RoomController controller;
 void setup() {
     Serial.begin(9600);
     pinMode(12, INPUT_PULLUP);
+    pinMode(13, INPUT_PULLUP);
     int outputPins[] = {9, 10, 11, 6, 7};
-    for (int counter = 0; counter < 5; ++counter) {
+    for (int counter = 0; counter < 5; counter++) {
         pinMode(outputPins[counter], OUTPUT);
     }
 }
@@ -209,6 +228,7 @@ void loop() {
     if (controller.roomLightButton.buttonWasClicked()) {
         controller.switchLampMode();
     };
+    controller.ringCycleFunc();
     controller.setColorsToLent();
     while (Serial.available()) {
         inChar = Serial.read();
