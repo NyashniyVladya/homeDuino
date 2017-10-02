@@ -44,14 +44,45 @@ class Button {
         }
 };
 
+
 class RoomController {
     private:
         boolean lampOne = false;
         boolean lampTwo = false;
-        int RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
+        unsigned short int RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
+        
         const int RGBPin[3] = {11, 10, 9};
         boolean ringMode = false; // Режим прозвонки на 13 пине.
         boolean lastRingStatus;
+        
+        
+        boolean needChangeCycle;
+        unsigned short int needRGB[3]; // Нужные значения, для изменения.
+        unsigned short int startValues[3]; // Нужные значения, для изменения.
+        unsigned int colorRelaxTime; // Время на автоматическую смену цветов в мс. Если 0 - отключено.
+        unsigned long int timeFromStart;
+        unsigned long int startChangeTime;
+        
+        
+        boolean colorRelaxModeIsOn() {
+            return (colorRelaxTime > 100);
+        }
+        
+        void setRandomColor() {
+            for (int i = 0; i <= 2; i++) {
+                needRGB[i] = random(0, 256);
+            };
+            equateColorArrays(startValues, RGB);
+            startChangeTime = timeFromStart;
+            needChangeCycle = true;
+        }
+        
+        void equateColorArrays(unsigned short int *array1, unsigned short int *array2) {
+            // Делает первый массив равным второму.
+            for (int i = 0; i <= 2; i++) {
+                array1[i] = array2[i];
+            }
+        }
         
         void roomLightOnOff(const int lampNum) {
             // Переключает состояние (вкл./выкл.) на лампе $lampNum.
@@ -109,6 +140,10 @@ class RoomController {
         boolean numInRange(const float *num, const float start, const float stop) {
             return ((start <= (*num)) && ((*num) < stop));
         }
+        void updateTime() {
+            timeFromStart = millis();
+        }
+        
         float lentLightLevel() {
             /* 
             Возвращает округлённое процентное значения аналогового регулятора,
@@ -149,11 +184,43 @@ class RoomController {
             }
         }
         
+        void relaxColorCycleControl() {
+            
+            if (colorRelaxModeIsOn()) {
+                if (!(needChangeCycle)) {
+                    setRandomColor();
+                };
+                const double *elapsedTime = new double((timeFromStart - startChangeTime));
+                if ((*elapsedTime) >= colorRelaxTime) {
+                    equateColorArrays(RGB, needRGB);
+                    needChangeCycle = false;
+                } else {
+                    short int *fullDistance = new short int;
+                    short int *distanceNow = new short int;
+                    const float *percentOfPath = new float(((*elapsedTime) / colorRelaxTime));
+                    for (int i = 0; i <= 2; i++) {
+                        *fullDistance = needRGB[i] - startValues[i];
+                        *distanceNow = (*fullDistance) * (*percentOfPath);
+                        RGB[i] = startValues[i] + (*distanceNow);
+                    }
+                    delete fullDistance;
+                    delete distanceNow;
+                    delete percentOfPath;
+                }
+                delete elapsedTime;
+            }
+            
+            
+        }
+        
+        
         void setColorsToLent() {
             /*
             Функция, работающая в цикле. 
-            Переключает цвета, на переданные, через COM, с поправкой на регулятор.
+            Переключает цвета, на хранящиеся в RGB[], с поправкой на регулятор.
             */
+            relaxColorCycleControl();
+            
             const float *lightPercent = new float(lentLightLevel());
             int *colorNeed = new int;
             int *pinNum = new int;
@@ -191,7 +258,16 @@ class RoomController {
                 lastRingStatus = false;
                 Serial.print("ringmode: ");
                 Serial.println(ringMode);
+            } else if ((*inputMessage).startsWith("colors")) {
+                colorRelaxTime = ((*inputMessage).substring(6)).toInt();
+                if (!(colorRelaxModeIsOn())) {
+                    for (int i = 0; i <= 2; i++) {
+                        RGB[i] = 0;
+                    }
+                }
+                
             }
+            //colorRelaxTime
         }
         
         void ringCycleFunc() {
@@ -225,6 +301,7 @@ void setup() {
 
 
 void loop() {
+    controller.updateTime();
     if (controller.roomLightButton.buttonWasClicked()) {
         controller.switchLampMode();
     };
@@ -245,4 +322,8 @@ void loop() {
         }
     }
 }
+
+
+
+
 
