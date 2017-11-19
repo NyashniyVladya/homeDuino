@@ -291,12 +291,17 @@ RoomController controller;
 
 void setup() {
     Serial.begin(9600);
-    pinMode(12, INPUT_PULLUP);
-    pinMode(13, INPUT_PULLUP);
+    
+    int inputPins[] = {12, 13};
     int outputPins[] = {9, 10, 11, 6, 7};
+    
+    for (int counter = 0; counter < 2; counter++) {
+        pinMode(inputPins[counter], INPUT_PULLUP);
+    }
     for (int counter = 0; counter < 5; counter++) {
         pinMode(outputPins[counter], OUTPUT);
     }
+    
 }
 
 
