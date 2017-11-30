@@ -1,74 +1,110 @@
 
+#include <OneButton.h>
 #include <math.h>
 #define lightLentAnalogPin A0
 
-
-class Button {
+class DiskPhone {
     
     private:
-        int buttonPinNum;
-        boolean buttonWasPush = false;
-        
-    public:
     
-        Button(int buttonPin) {
-            buttonPinNum = buttonPin;
-        };
+        unsigned short diskCounter = 0b1;
+        unsigned short fullCode = 0b0;
+    
+        const unsigned short handsetPin = 2;
+        const unsigned short diskPin = 8;
+        const unsigned short counterPin = 3;
         
-        boolean buttonWasClicked() {
-            /*
-            Определяет была ли нажата кнопка, по условиям: 
-            Была нажата, сейчас отпущена.
-            */
-            boolean *buttonNotPush = new boolean;
-            for (int scanStep = 1; scanStep <= 2; scanStep++) {
-                *buttonNotPush = digitalRead(buttonPinNum);
-                if (*buttonNotPush) {
-                    delete buttonNotPush;
-                    if (buttonWasPush) { // Кнопка сейчас не нажата, но БЫЛА нажата. Фиксируем клик.
-                        buttonWasPush = false;
+        bool handset, disk, counter;
+        
+        bool _counterWasPush = false;
+        unsigned long pushStartTime;
+        bool counterWasClicked(void) {
+            unsigned long timeNow = millis();
+            if (counter) {
+                // Нажатие сейчас.
+                if (!(_counterWasPush)) {
+                    // Зафиксировано ещё не было. Фиксируем.
+                    pushStartTime = timeNow;
+                    _counterWasPush = true;
+                }
+            } else {
+                // Нажатия нет.
+                if (_counterWasPush) {
+                    // Но было.
+                    _counterWasPush = false;
+                    if ((timeNow - pushStartTime) >= 20) {
+                        // По времени больше 20 мс. Не дребезг.
                         return true;
-                    } else { // Сейчас не нажата и нажата не была.
-                        return false;
-                    }
-                } else {
-                    if (scanStep <= 1) { // Перепроверяем, на случай дребезга.
-                        delay(10);
-                    } else { // Нажатие есть. Фиксируем переменную "кнопка была нажата".
-                        buttonWasPush = true;
                     }
                 }
             }
-            delete buttonNotPush;
             return false;
         }
+        
+        
+    public:
+    
+        DiskPhone() {
+            pinMode(handsetPin, INPUT);
+            pinMode(diskPin, INPUT);
+            pinMode(counterPin, INPUT);
+            pushStartTime = millis();
+        }
+        
+        void cycleFunc(void) {
+            handset = digitalRead(handsetPin);
+            disk = digitalRead(diskPin) && handset;
+            counter = (!(digitalRead(counterPin))) && disk;
+            
+            if (handset) {
+                // Трубка снята.
+                if (counterWasClicked()) {
+                    diskCounter <<= 1;
+                }
+                if (!(disk)) {
+                    // Диск отпущен.
+                    if (diskCounter > 0b1) {
+                        fullCode ^= (diskCounter >> 1);
+                        diskCounter = 0b1;
+                    }
+                }
+            } else {
+                diskCounter = 0b1;
+                _counterWasPush = false;
+                if (fullCode > 0b0) {
+                    Serial.println(fullCode);
+                    fullCode = 0b0;
+                }
+            }
+            
+            
+        }
+    
 };
 
 
 class RoomController {
     private:
-        boolean lampOne = false;
-        boolean lampTwo = false;
-        unsigned short int RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
+        unsigned short RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
         
         const int RGBPin[3] = {11, 10, 9};
-        boolean ringMode = false; // Режим прозвонки на 13 пине.
-        boolean lastRingStatus;
+        bool ringMode = false; // Режим прозвонки на 13 пине.
+        bool lastRingStatus;
         
         
-        boolean needChangeCycle;
-        unsigned short int needRGB[3]; // Нужные значения, для изменения.
-        unsigned short int startValues[3]; // Нужные значения, для изменения.
-        unsigned int colorRelaxTime; // Время на автоматическую смену цветов в мс. Если 0 - отключено.
-        unsigned long int timeFromStart;
-        unsigned long int startChangeTime;
+        bool needChangeCycle;
+        unsigned short needRGB[3]; // Нужные значения, для изменения.
+        unsigned short startValues[3]; // Нужные значения, для изменения.
+        unsigned colorRelaxTime; // Время на автоматическую смену цветов в мс. Если 0 - отключено.
+        unsigned long timeFromStart;
+        unsigned long startChangeTime;
         
         
-        boolean colorRelaxModeIsOn() {
+        bool colorRelaxModeIsOn(void) {
             return (colorRelaxTime > 100);
         }
         
-        void setRandomColor() {
+        void setRandomColor(void) {
             for (int i = 0; i <= 2; i++) {
                 needRGB[i] = random(0, 256);
             };
@@ -77,31 +113,13 @@ class RoomController {
             needChangeCycle = true;
         }
         
-        void equateColorArrays(unsigned short int *array1, unsigned short int *array2) {
+        void equateColorArrays(unsigned short *array1, unsigned short *array2) {
             // Делает первый массив равным второму.
             for (int i = 0; i <= 2; i++) {
                 array1[i] = array2[i];
             }
         }
         
-        void roomLightOnOff(const int lampNum) {
-            // Переключает состояние (вкл./выкл.) на лампе $lampNum.
-            boolean *newLampStatus = new boolean;
-            if (lampNum == 1) {
-                *newLampStatus = !(digitalRead(6));
-                lampOne = *newLampStatus;
-                digitalWrite(6, *newLampStatus);
-                Serial.print("Lamp 1: ");
-            } else if (lampNum == 2) {
-                *newLampStatus = !(digitalRead(7));
-                lampTwo = *newLampStatus;
-                digitalWrite(7, *newLampStatus);
-                Serial.print("Lamp 2: ");
-            };
-            Serial.println(*newLampStatus);
-            delay(50);
-            delete newLampStatus;
-        }
         
         void lentWriteColorToArray(const String *colorAndVal) {
             // Записывает значение, принятое с COM порта в массив, для дальнейшей обработки.
@@ -136,15 +154,38 @@ class RoomController {
         }
         
     public:
-        Button roomLightButton{12};
-        boolean numInRange(const float *num, const float start, const float stop) {
-            return ((start <= (*num)) && ((*num) < stop));
+
+        bool lampOne = false;
+        bool lampTwo = false;
+
+        void roomLightOnOff(const int lampNum) {
+            // Переключает состояние (вкл./выкл.) на лампе $lampNum.
+            bool *newLampStatus = new bool;
+            if (lampNum == 1) {
+                *newLampStatus = !(digitalRead(6));
+                lampOne = *newLampStatus;
+                digitalWrite(6, *newLampStatus);
+                Serial.print("Lamp 1: ");
+            } else if (lampNum == 2) {
+                *newLampStatus = !(digitalRead(7));
+                lampTwo = *newLampStatus;
+                digitalWrite(7, *newLampStatus);
+                Serial.print("Lamp 2: ");
+            };
+            Serial.println(*newLampStatus);
+            delay(50);
+            delete newLampStatus;
         }
-        void updateTime() {
+
+
+        bool numInRange(const float *num, const float start, const float stp) {
+            return ((start <= (*num)) && ((*num) < stp));
+        }
+        void updateTime(void) {
             timeFromStart = millis();
         }
         
-        float lentLightLevel() {
+        float lentLightLevel(void) {
             /* 
             Возвращает округлённое процентное значения аналогового регулятора,
             где (.0 <= value <= 1.)
@@ -163,28 +204,21 @@ class RoomController {
             }
         }
         
-        void switchLampMode() {
-            // Переключает значения ламп. Для управления с одной кнопки, без ПК.
-            if (lampOne) {
-                roomLightOnOff(2);
-            }
-            roomLightOnOff(1);
-        }
-        
         int getColorIndex(const char *color) {
             // Возвращает индекс цвета, в нужных массивах.
-            if (*color == 'r') {
-                return 0;
-            } else if (*color == 'g') {
-                return 1;
-            } else if (*color == 'b') {
-                return 2;
-            } else {
-                return 10;
+            switch (*color) {
+                case 'r':
+                    return 0;
+                case 'g':
+                    return 1;
+                case 'b':
+                    return 2;
+                default:
+                    return 10;
             }
         }
         
-        void relaxColorCycleControl() {
+        void relaxColorCycleControl(void) {
             
             if (colorRelaxModeIsOn()) {
                 if (!(needChangeCycle)) {
@@ -195,8 +229,8 @@ class RoomController {
                     equateColorArrays(RGB, needRGB);
                     needChangeCycle = false;
                 } else {
-                    short int *fullDistance = new short int;
-                    short int *distanceNow = new short int;
+                    short *fullDistance = new short;
+                    short *distanceNow = new short;
                     const float *percentOfPath = new float(((*elapsedTime) / colorRelaxTime));
                     for (int i = 0; i <= 2; i++) {
                         *fullDistance = needRGB[i] - startValues[i];
@@ -214,7 +248,7 @@ class RoomController {
         }
         
         
-        void setColorsToLent() {
+        void setColorsToLent(void) {
             /*
             Функция, работающая в цикле. 
             Переключает цвета, на хранящиеся в RGB[], с поправкой на регулятор.
@@ -232,6 +266,17 @@ class RoomController {
             delete lightPercent;
             delete colorNeed;
             delete pinNum;
+        }
+        
+        void switchRelaxColorsMode(void) {
+            String *command = new String;
+            if (colorRelaxModeIsOn()) {
+                *command = "colors";
+            } else {
+                *command = "colors60000";
+            }
+            parseMessage(command);
+            delete command;
         }
         
         void parseMessage(const String *inputMessage) {
@@ -264,15 +309,16 @@ class RoomController {
                     for (int i = 0; i <= 2; i++) {
                         RGB[i] = 0;
                     }
+                    needChangeCycle = false;
                 }
                 
             }
             //colorRelaxTime
         }
         
-        void ringCycleFunc() {
+        void ringCycleFunc(void) {
             if (ringMode) {
-                boolean *contactNow = new boolean((!(digitalRead(13))));
+                bool *contactNow = new bool((!(digitalRead(13))));
                 if ((*contactNow) != lastRingStatus) {
                     lastRingStatus = (*contactNow);
                     Serial.print("ring: ");
@@ -288,16 +334,47 @@ const char separator = '/';
 char inChar;
 String message = "";
 RoomController controller;
+DiskPhone phone;
 
-void setup() {
+
+
+/////////////////////// Кнопки и их функции.
+
+OneButton roomLightButton(12, true);
+
+
+
+void buttonsTick(void) {
+    roomLightButton.tick();
+}
+
+
+//////////////////////
+
+
+
+void setup(void) {
     Serial.begin(9600);
     
-    int inputPins[] = {12, 13};
-    int outputPins[] = {9, 10, 11, 6, 7};
+    // Переключает значения ламп. Для управления с одной кнопки, без ПК.
+    roomLightButton.attachClick(
+        (
+            []() {
+                if (controller.lampOne) {
+                    controller.roomLightOnOff(2);
+                }
+                controller.roomLightOnOff(1);
+            }
+        )
+    );
+    roomLightButton.attachLongPressStop(
+        ([]() {controller.switchRelaxColorsMode();})
+    );
     
-    for (int counter = 0; counter < 2; counter++) {
-        pinMode(inputPins[counter], INPUT_PULLUP);
-    }
+    
+    pinMode(13, INPUT_PULLUP);
+
+    int outputPins[] = {9, 10, 11, 6, 7};
     for (int counter = 0; counter < 5; counter++) {
         pinMode(outputPins[counter], OUTPUT);
     }
@@ -305,13 +382,13 @@ void setup() {
 }
 
 
-void loop() {
+void loop(void) {
     controller.updateTime();
-    if (controller.roomLightButton.buttonWasClicked()) {
-        controller.switchLampMode();
-    };
+    buttonsTick();
     controller.ringCycleFunc();
     controller.setColorsToLent();
+    phone.cycleFunc();
+    
     while (Serial.available()) {
         inChar = Serial.read();
         if (inChar == separator) {
@@ -327,6 +404,8 @@ void loop() {
         }
     }
 }
+
+
 
 
 
