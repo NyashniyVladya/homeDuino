@@ -6,7 +6,6 @@
 
 class RoomController {
     private:
-        unsigned short RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
         
         const int RGBPin[3] = {11, 10, 9};
         bool ringMode = false; // Режим прозвонки на 13 пине.
@@ -20,10 +19,6 @@ class RoomController {
         unsigned long timeFromStart;
         unsigned long startChangeTime;
         
-        
-        bool colorRelaxModeIsOn(void) {
-            return (colorRelaxTime > 100);
-        }
         
         void setRandomColor(void) {
             for (int i = 0; i <= 2; i++) {
@@ -77,9 +72,15 @@ class RoomController {
     public:
     
 
+        unsigned short RGB[3]; // Хранение указаний о цвете (без изменений от регулятора).
         const unsigned short lampPins[2] = {6, 7};
         bool lampStatus[2] = {false, false};
 
+        
+        bool colorRelaxModeIsOn(void) {
+            return (colorRelaxTime > 100);
+        }
+        
         void roomLightOnOff(const bool lNum) {
             const short lampNum = lNum;
             // Переключает состояние (вкл./выкл.) на лампе $lampNum.
@@ -197,15 +198,28 @@ class RoomController {
             delete pinNum;
         }
         
-        void switchRelaxColorsMode(void) {
-            String *command = new String;
+        void disableRelaxColorMode(void) {
             if (colorRelaxModeIsOn()) {
-                *command = "colors";
-            } else {
-                *command = "colors60000";
+                colorRelaxTime = 0;
+                for (int i = 0; i <= 2; i++) {
+                    RGB[i] = 0;
+                };
             }
-            parseMessage(command);
-            delete command;
+        }
+        
+        void enableRelaxColorMode(void) {
+            if (!(colorRelaxModeIsOn())) {
+                colorRelaxTime = 60000;
+            }
+        }
+        
+        
+        void switchRelaxColorsMode(void) {
+            if (colorRelaxModeIsOn()) {
+                disableRelaxColorMode();
+            } else {
+                enableRelaxColorMode();
+            }
         }
         
         void parseMessage(const String *inputMessage) {
@@ -238,7 +252,7 @@ class RoomController {
                 if (!(colorRelaxModeIsOn())) {
                     for (int i = 0; i <= 2; i++) {
                         RGB[i] = 0;
-                    }
+                    };
                     needChangeCycle = false;
                 }
                 
@@ -275,9 +289,13 @@ class DiskPhone {
         const unsigned short handsetPin = 2;
         const unsigned short diskPin = 8;
         const unsigned short counterPin = 3;
+
         
+        const unsigned short colorBits = 0b1100000000;
+        const unsigned short codeRead = 0b11111111;
+
         bool handset, disk, counter;
-        
+
         bool _counterWasPush = false;
         unsigned long pushStartTime;
         bool counterWasClicked(void) {
@@ -300,6 +318,51 @@ class DiskPhone {
                 }
             }
             return false;
+        }
+
+        
+        void codeHandler(void) {
+            if (fullCode) {
+                unsigned short colorSet = (colorBits & fullCode);
+                const unsigned short code = (codeRead & fullCode);
+                if (colorSet) {
+                    (*_cont).disableRelaxColorMode();
+                    colorSet = (colorSet >> 8) - 1;
+                    (*_cont).RGB[colorSet] = code;
+                } else {
+                    switch (code) {
+                        case 0b00000001:
+                            (*_cont).roomLightOff(0);
+                            (*_cont).roomLightOff(1);
+                            break;
+                        case 0b00000010:
+                            (*_cont).roomLightOn(0);
+                            (*_cont).roomLightOn(1);
+                            break;
+                        case 0b00000011:
+                            (*_cont).roomLightOnOff(0);
+                            break;
+                        case 0b00000100:
+                            (*_cont).roomLightOnOff(1);
+                            break;
+                        case 0b00000101:
+                            (*_cont).disableRelaxColorMode();
+                            for (int i = 0; i <= 2; i++) {
+                                (*_cont).RGB[i] = 0;
+                            };
+                            break;
+                        case 0b00000110:
+                            (*_cont).disableRelaxColorMode();
+                            for (int i = 0; i <= 2; i++) {
+                                (*_cont).RGB[i] = 255;
+                            };
+                            break;
+                        case 0b00000111:
+                            (*_cont).enableRelaxColorMode();
+                            break;
+                    }
+                }
+            }
         }
         
         
@@ -337,7 +400,7 @@ class DiskPhone {
                 diskCounter = 0b1;
                 _counterWasPush = false;
                 if (fullCode > 0b0) {
-                    (*_cont).roomLightOnOff(0);
+                    codeHandler();
                     fullCode = 0b0;
                 }
             }
