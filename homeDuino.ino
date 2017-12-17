@@ -204,6 +204,7 @@ class RoomController {
                 for (int i = 0; i <= 2; i++) {
                     RGB[i] = 0;
                 };
+                needChangeCycle = false;
             }
         }
         
